@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/notifications")
 class NotificationsController {
 
-    /** Walking skeleton: prova que o plugin está carregado de ponta a ponta. */
+    /** Walking skeleton: proves the plugin is wired end to end. */
     @GetMapping("/ping")
     fun ping() = mapOf("plugin" to "notifications", "status" to "ok")
 }

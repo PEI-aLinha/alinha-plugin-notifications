@@ -1,2 +1,2 @@
--- Schema próprio do plugin Notifications. Nenhum outro módulo lê estas tabelas.
+-- Own schema of the Notifications plugin. No other module reads these tables.
 create schema if not exists notifications;

@@ -11,7 +11,7 @@ export function NotificationsPage() {
 
   return (
     <>
-      <PageHeader title="Notifications" />
+      <PageHeader title="Notificações" />
       <p>Backend: {ping.isPending ? 'a verificar…' : ping.isError ? 'indisponível' : ping.data.status}</p>
     </>
   )
