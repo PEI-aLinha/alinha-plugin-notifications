@@ -1,0 +1,10 @@
+# Manifest do plugin — manter igual a NotificationsPlugin.kt (backend).
+id: notifications
+name: "Notifications"
+kind: feature
+version: 0.1.0
+# Onde este repo fica como submodule dentro do repo principal (PEI-aLinha/alinha)
+path: plugins/feature/notifications
+publishes: []     # eventos que publica (ex.: AssessmentSubmitted)
+consumes: []      # eventos que consome
+permissions: []   # recursos RBAC (ex.: assessment:read, assessment:edit)
