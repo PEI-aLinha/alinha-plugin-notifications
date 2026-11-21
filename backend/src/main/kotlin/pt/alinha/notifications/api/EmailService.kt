@@ -2,7 +2,8 @@ package pt.alinha.notifications.api
 
 /**
  * Queues a pt-PT email for the current tenant (outbox): it is stored in the caller's transaction and sent
- * asynchronously after commit, so a rolled-back change sends nothing and a committed one is never lost.
+ * asynchronously after commit, so a rolled-back change sends nothing. There is no automatic retry yet: a send that fails is logged as FAILED, and one
+ * interrupted by a restart stays PENDING or SENDING. Delivery is at most once per queued email.
  * Every attempt is kept in the delivery log.
  *
  * Call it inside a `@Transactional` method of a tenant-scoped request or `TenantContext.runAs`; outside a

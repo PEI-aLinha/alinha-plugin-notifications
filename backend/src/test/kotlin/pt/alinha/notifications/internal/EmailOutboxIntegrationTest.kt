@@ -2,6 +2,7 @@ package pt.alinha.notifications.internal
 
 import jakarta.mail.Address
 import jakarta.mail.internet.MimeMessage
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -12,6 +13,7 @@ import org.springframework.boot.SpringBootConfiguration
 import org.springframework.boot.autoconfigure.AutoConfigurationPackage
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.mail.MailSendException
@@ -32,6 +34,7 @@ import pt.alinha.core.tenant.internal.JwtTenantContext
 import pt.alinha.core.tenant.internal.ScopedCorrelationContext
 import pt.alinha.notifications.api.EmailService
 import pt.alinha.pluginapi.TenantId
+import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -61,6 +64,7 @@ class EmailOutboxIntegrationTest {
     @Autowired private lateinit var tx: TransactionTemplate
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var mailer: FakeMailSender
+    @Autowired private lateinit var events: ApplicationEventPublisher
 
     private val tenant = TenantId(UUID.randomUUID())
     private val params = mapOf("name" to "Ana", "organization" to "Acme")
@@ -70,11 +74,8 @@ class EmailOutboxIntegrationTest {
     private fun deliveryTo(to: String): EmailDelivery? = asTenant { deliveries.findAll().singleOrNull { it.recipient == to } }
 
     private fun awaitStatus(to: String, status: EmailStatus): EmailDelivery {
-        repeat(100) {
-            deliveryTo(to)?.takeIf { it.status == status }?.let { return it }
-            Thread.sleep(100)
-        }
-        error("No $status delivery to $to; got ${deliveryTo(to)?.status}")
+        await().atMost(Duration.ofSeconds(10)).until { deliveryTo(to)?.status == status }
+        return deliveryTo(to)!!
     }
 
     @Test
@@ -87,6 +88,7 @@ class EmailOutboxIntegrationTest {
         assertEquals("Olá Ana", message.subject)
         assertEquals("test-greeting", delivery.template)
         assertTrue(delivery.sentAt != null)
+        assertEquals(null, delivery.html, "the body (may hold tokens) is purged once sent")
     }
 
     @Test
@@ -120,7 +122,8 @@ class EmailOutboxIntegrationTest {
 
         val delivery = awaitStatus(to, EmailStatus.FAILED)
         assertTrue(delivery.error!!.contains("SMTP down"))
-        assertFalse(delivery.error!!.contains(to), "the address is personal data")
+        assertFalse(delivery.error!!.contains(to, ignoreCase = true), "the address is personal data")
+        assertFalse(delivery.error!!.contains("example.pt", ignoreCase = true), "nor its domain")
     }
 
     @Test
@@ -135,6 +138,18 @@ class EmailOutboxIntegrationTest {
     fun `a malformed address fails the caller and queues nothing`() {
         assertThrows<IllegalArgumentException> { asTenant { emails.send("not an address", "test-greeting", params) } }
         assertEquals(null, deliveryTo("not an address"))
+    }
+
+    @Test
+    fun `a duplicate event does not send the email twice`() {
+        val to = "dup-${UUID.randomUUID()}@example.pt"
+        val id = asTenant { emails.send(to, "test-greeting", params) }.let { awaitStatus(to, EmailStatus.SENT).id }
+
+        tx.executeWithoutResult { events.publishEvent(EmailQueued(tenant, UUID.randomUUID(), id)) }
+
+        await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(3)).untilAsserted {
+            assertEquals(1, mailer.sent.count { it.allRecipients.map(Address::toString) == listOf(to) })
+        }
     }
 
     @Test

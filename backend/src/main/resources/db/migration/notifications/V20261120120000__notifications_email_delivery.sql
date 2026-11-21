@@ -5,8 +5,8 @@ create table notifications.email_delivery (
     recipient   text        not null,
     template    text        not null,
     subject     text        not null,
-    html        text        not null,
-    status      text        not null check (status in ('PENDING', 'SENT', 'FAILED')),
+    html        text,       -- cleared once SENT: later templates may carry one-time tokens
+    status      text        not null check (status in ('PENDING', 'SENDING', 'SENT', 'FAILED')),
     error       text,
     created_at  timestamptz not null,
     sent_at     timestamptz

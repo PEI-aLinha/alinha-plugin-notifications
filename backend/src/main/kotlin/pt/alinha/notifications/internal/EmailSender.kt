@@ -9,9 +9,13 @@ import org.springframework.stereotype.Component
 import org.springframework.transaction.event.TransactionalEventListener
 import org.springframework.transaction.support.TransactionTemplate
 import pt.alinha.core.tenant.TenantContext
+import pt.alinha.notifications.api.EmailService
 import java.time.Instant
 
-/** Sends a committed delivery over SMTP and records the outcome (recipe: docs/tenancy.md, rule 4). */
+/**
+ * Sends a committed delivery over SMTP and records the outcome (recipe: docs/tenancy.md, rule 4).
+ * A crash mid-send leaves the row SENDING and it is not resent (no retry job yet, see [EmailService]).
+ */
 @Component
 class EmailSender(
     private val mailer: JavaMailSender,
@@ -25,28 +29,40 @@ class EmailSender(
     @Async
     @TransactionalEventListener
     fun on(event: EmailQueued) = tenants.runAs(event) {
-        // Idempotent: a republished event for a delivery already handled does nothing.
-        val delivery = tx.execute { deliveries.findById(event.deliveryId).orElse(null) }
-            ?.takeIf { it.status == EmailStatus.PENDING } ?: return@runAs
+        // One conditional UPDATE, so a duplicate event cannot also send this row.
+        val delivery = tx.execute { if (deliveries.claim(event.deliveryId) == 1) deliveries.findById(event.deliveryId).orElse(null) else null }
+            ?: return@runAs
         try {
             mailer.send(mailer.createMimeMessage().also { message ->
                 MimeMessageHelper(message, "UTF-8").apply {
                     setFrom(from)
                     setTo(delivery.recipient)
                     setSubject(delivery.subject)
-                    setText(delivery.html, true)
+                    setText(delivery.html.orEmpty(), true)
                 }
             })
             delivery.status = EmailStatus.SENT
             delivery.sentAt = Instant.now()
+            delivery.html = null
+            delivery.error = null
         } catch (e: Exception) {
-            // Any failure (including MessagingException from MimeMessageHelper) must leave the row FAILED, not PENDING.
-            // The address is personal data and SMTP errors often quote it: redact it before logging or storing.
-            val reason = "${e.javaClass.simpleName}: ${e.message}".replace(delivery.recipient, "<recipient>")
+            // Any failure (including MessagingException from MimeMessageHelper) must leave the row FAILED, not SENDING.
+            val reason = redact("${e.javaClass.simpleName}: ${e.message}", delivery.recipient)
             log.warn("Email delivery {} failed: {}", delivery.id, reason)
             delivery.status = EmailStatus.FAILED
             delivery.error = reason
         }
         tx.executeWithoutResult { deliveries.save(delivery) }
+    }
+
+    // The address is personal data and SMTP errors quote it, in any case or in part (local part, domain).
+    private fun redact(message: String, recipient: String): String =
+        listOf(recipient, recipient.substringBefore('@'), recipient.substringAfter('@'))
+            .filter { it.length >= 3 }
+            .fold(message) { text, part -> text.replace(part, "<recipient>", ignoreCase = true) }
+            .take(MAX_ERROR)
+
+    companion object {
+        const val MAX_ERROR = 500
     }
 }

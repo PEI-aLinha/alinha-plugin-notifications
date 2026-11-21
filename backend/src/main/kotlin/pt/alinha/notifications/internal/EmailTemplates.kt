@@ -20,8 +20,11 @@ class EmailTemplates {
         val template = read("email/templates/$name.html") ?: throw IllegalArgumentException("Unknown email template: $name")
         val subject = fill(template.substringBefore('\n').removeSuffix("\r"), params, html = false)
         require('\r' !in subject && '\n' !in subject) { "Email subject cannot contain line breaks" }
+        require(subject.length <= MAX_SUBJECT) { "Email subject is longer than $MAX_SUBJECT characters" }
         val body = fill(template.substringAfter('\n'), params, html = true)
-        return RenderedEmail(subject, layout.replace("{{subject}}", escape(subject)).replace("{{content}}", body))
+        // One pass: a subject or body containing "{{content}}" is not expanded again.
+        val html = LAYOUT_SLOT.replace(layout) { if (it.groupValues[1] == "subject") escape(subject) else body }
+        return RenderedEmail(subject, html)
     }
 
     private fun fill(text: String, params: Map<String, String>, html: Boolean): String = PLACEHOLDER.replace(text) {
@@ -37,6 +40,8 @@ class EmailTemplates {
 
     private companion object {
         val NAME = Regex("[a-z0-9-]+")
+        const val MAX_SUBJECT = 200
+        val LAYOUT_SLOT = Regex("""\{\{(subject|content)}}""")
         val PLACEHOLDER = Regex("""\{\{(\w+)}}""")
     }
 }
