@@ -7,7 +7,8 @@ package pt.alinha.notifications.api
  *
  * Call it inside a `@Transactional` method of a tenant-scoped request or `TenantContext.runAs`; outside a
  * transaction it throws. [template] is a file in `email/templates/` of this plugin; every `{{param}}` it uses
- * must be in [params] (values are HTML-escaped).
+ * must be in [params] (values are HTML-escaped in the body; the subject rejects line breaks).
+ * An invalid [to] address throws [IllegalArgumentException].
  */
 interface EmailService {
     fun send(to: String, template: String, params: Map<String, String> = emptyMap())

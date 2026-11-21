@@ -3,6 +3,7 @@ package pt.alinha.notifications.internal
 import jakarta.mail.Address
 import jakarta.mail.internet.MimeMessage
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -107,7 +108,7 @@ class EmailOutboxIntegrationTest {
             asTenant { emails.send(to, "test-greeting", params); error("caller fails after queueing") }
         }
 
-        Thread.sleep(500)
+        // No row means the sender has nothing to send, so this needs no waiting.
         assertEquals(null, deliveryTo(to))
         assertTrue(mailer.sent.none { it.allRecipients.map(Address::toString) == listOf(to) })
     }
@@ -119,6 +120,36 @@ class EmailOutboxIntegrationTest {
 
         val delivery = awaitStatus(to, EmailStatus.FAILED)
         assertTrue(delivery.error!!.contains("SMTP down"))
+        assertFalse(delivery.error!!.contains(to), "the address is personal data")
+    }
+
+    @Test
+    fun `an unexpected send error is logged as failed instead of staying pending`() {
+        val to = "${FakeMailSender.BROKEN}-${UUID.randomUUID()}@example.pt"
+        asTenant { emails.send(to, "test-greeting", params) }
+
+        assertTrue(awaitStatus(to, EmailStatus.FAILED).error!!.contains("IllegalStateException"))
+    }
+
+    @Test
+    fun `a malformed address fails the caller and queues nothing`() {
+        assertThrows<IllegalArgumentException> { asTenant { emails.send("not an address", "test-greeting", params) } }
+        assertEquals(null, deliveryTo("not an address"))
+    }
+
+    @Test
+    fun `another tenant cannot see the delivery log`() {
+        val to = "isolated-${UUID.randomUUID()}@example.pt"
+        // SENT is read back under this tenant, so the async send also ran under the event's tenant.
+        val id = asTenant { emails.send(to, "test-greeting", params) }.let { awaitStatus(to, EmailStatus.SENT).id }
+
+        val other = TenantId(UUID.randomUUID())
+        tenants.runAs(other) {
+            tx.executeWithoutResult {
+                assertTrue(deliveries.findAll().none { it.id == id })
+                assertTrue(deliveries.findById(id).isEmpty)
+            }
+        }
     }
 
     @Test
@@ -129,20 +160,23 @@ class EmailOutboxIntegrationTest {
     }
 }
 
-/** Captures messages instead of talking SMTP; recipients starting with [REJECTED] fail like a down server. */
+/** Captures messages instead of talking SMTP; [REJECTED] recipients fail like a down server, [BROKEN] ones with a non-mail error. */
 @Component
 class FakeMailSender : JavaMailSenderImpl() {
     val sent = CopyOnWriteArrayList<MimeMessage>()
 
     override fun doSend(mimeMessages: Array<out MimeMessage>, originalMessages: Array<out Any>?) {
         mimeMessages.forEach { message ->
-            if (message.allRecipients.any { it.toString().startsWith(REJECTED) }) throw MailSendException("SMTP down")
+            val to = message.allRecipients.single().toString()
+            if (to.startsWith(REJECTED)) throw MailSendException("SMTP down for $to")
+            if (to.startsWith(BROKEN)) throw IllegalStateException("not a MailException")
             sent += message
         }
     }
 
     companion object {
         const val REJECTED = "rejected"
+        const val BROKEN = "broken"
     }
 }
 

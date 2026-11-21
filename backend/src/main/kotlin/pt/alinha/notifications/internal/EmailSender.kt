@@ -2,7 +2,6 @@ package pt.alinha.notifications.internal
 
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.mail.MailException
 import org.springframework.mail.javamail.JavaMailSender
 import org.springframework.mail.javamail.MimeMessageHelper
 import org.springframework.scheduling.annotation.Async
@@ -40,11 +39,13 @@ class EmailSender(
             })
             delivery.status = EmailStatus.SENT
             delivery.sentAt = Instant.now()
-        } catch (e: MailException) {
-            // The address is personal data: log the delivery id only.
-            log.warn("Email delivery {} failed: {}", delivery.id, e.message)
+        } catch (e: Exception) {
+            // Any failure (including MessagingException from MimeMessageHelper) must leave the row FAILED, not PENDING.
+            // The address is personal data and SMTP errors often quote it: redact it before logging or storing.
+            val reason = "${e.javaClass.simpleName}: ${e.message}".replace(delivery.recipient, "<recipient>")
+            log.warn("Email delivery {} failed: {}", delivery.id, reason)
             delivery.status = EmailStatus.FAILED
-            delivery.error = e.message
+            delivery.error = reason
         }
         tx.executeWithoutResult { deliveries.save(delivery) }
     }

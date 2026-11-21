@@ -44,4 +44,16 @@ class EmailTemplatesTest {
     fun `a template name cannot leave the templates folder`() {
         assertThrows<IllegalArgumentException> { templates.render("../layout", params) }
     }
+
+    @Test
+    fun `subject is plain text and escaped only inside the layout title`() {
+        val email = templates.render("test-greeting", params + ("name" to "O'Brien & Filhos"))
+        assertEquals("Olá O'Brien & Filhos", email.subject)
+        assertTrue(email.html.contains("<title>Olá O&#39;Brien &amp; Filhos</title>"))
+    }
+
+    @Test
+    fun `a line break in a subject param is rejected so it cannot inject headers`() {
+        assertThrows<IllegalArgumentException> { templates.render("test-greeting", params + ("name" to "Ana\r\nBcc: x@evil.pt")) }
+    }
 }
