@@ -35,9 +35,11 @@ class OutboxEmailService(
     // Rendered now, in the caller's thread, so a bad template or a missing param fails the caller's change.
     @Transactional(propagation = Propagation.MANDATORY)
     override fun send(to: String, template: String, params: Map<String, String>) {
-        require(runCatching { InternetAddress(to, true) }.isSuccess) { "Invalid email address" } // no address: personal data
+        // Store the normalised address, so "Ana <a@b.pt>" becomes "a@b.pt". The message omits it: personal data.
+        val address = runCatching { InternetAddress(to, true).address }.getOrNull()
+        require(address != null) { "Invalid email address" }
         val email = templates.render(template, params)
-        val delivery = deliveries.save(EmailDelivery(recipient = to, template = template, subject = email.subject, html = email.html))
+        val delivery = deliveries.save(EmailDelivery(recipient = address, template = template, subject = email.subject, html = email.html))
         audit.record("email.queue", "email", delivery.id.toString(), mapOf("template" to template))
         events.publishEvent(EmailQueued(tenants.current(), correlation.current(), delivery.id))
     }

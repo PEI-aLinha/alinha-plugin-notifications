@@ -26,7 +26,7 @@ class EmailSender(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Async
+    @Async(AsyncConfig.EXECUTOR)
     @TransactionalEventListener
     fun on(event: EmailQueued) = tenants.runAs(event) {
         // One conditional UPDATE, so a duplicate event cannot also send this row.
@@ -51,6 +51,7 @@ class EmailSender(
             log.warn("Email delivery {} failed: {}", delivery.id, reason)
             delivery.status = EmailStatus.FAILED
             delivery.error = reason
+            delivery.html = null // never retried, so do not keep a body that may carry one-time tokens
         }
         tx.executeWithoutResult { deliveries.save(delivery) }
     }
