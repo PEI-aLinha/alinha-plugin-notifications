@@ -1,4 +1,5 @@
 import { definePlugin } from '@alinha/plugin-sdk'
+import { Bell } from 'lucide-react'
 import { NotificationsPage } from './pages/NotificationsPage'
 
 /**
@@ -18,6 +19,6 @@ export default definePlugin({
     ],
   },
   nav: [
-    { label: 'Notificações', path: 'notifications', area: 'client' },
+    { label: 'Notificações', path: 'notifications', area: 'client', icon: Bell, order: 90 },
   ],
 })
