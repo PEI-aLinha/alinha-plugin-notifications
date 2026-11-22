@@ -1,18 +1,13 @@
-import { useQuery } from '@tanstack/react-query'
-import { useHost } from '@alinha/plugin-sdk'
-import { PageHeader } from '@alinha/ui'
+import { Bell } from 'lucide-react'
+import { EmptyState, PageHeader } from '@alinha/ui'
 
 export function NotificationsPage() {
-  const { api } = useHost()
-  const ping = useQuery({
-    queryKey: ['notifications', 'ping'],
-    queryFn: () => api<{ plugin: string; status: string }>('/notifications/ping'),
-  })
-
   return (
     <>
-      <PageHeader title="Notificações" />
-      <p>Backend: {ping.isPending ? 'a verificar…' : ping.isError ? 'indisponível' : ping.data.status}</p>
+      <PageHeader title="Notificações" subtitle="Avisos e lembretes sobre a sua organização." />
+      <EmptyState icon={<Bell className="size-5" aria-hidden />} title="Em construção">
+        Aqui vai ver os avisos importantes, como prazos a aproximar-se, novas recomendações ou alterações feitas pela equipa de consultoria.
+      </EmptyState>
     </>
   )
 }
