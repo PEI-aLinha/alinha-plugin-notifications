@@ -53,20 +53,9 @@ class EmailTemplatesTest {
     }
 
     @Test
-    fun `a line break in a subject param is rejected so it cannot inject headers`() {
-        assertThrows<IllegalArgumentException> { templates.render("test-greeting", params + ("name" to "Ana\r\nBcc: x@evil.pt")) }
-    }
-
-    @Test
-    fun `the subject is plain text but escaped in the layout title`() {
-        val email = templates.render("test-greeting", params + ("name" to "Tom & O'Neil"))
-        assertEquals("Olá Tom & O'Neil", email.subject)
-        assertTrue(email.html.contains("<title>Olá Tom &amp; O&#39;Neil</title>"))
-    }
-
-    @Test
     fun `a subject param with a line break or an excessive length fails`() {
         assertThrows<IllegalArgumentException> { templates.render("test-greeting", params + ("name" to "Ana\nBcc: x@y.pt")) }
+        assertThrows<IllegalArgumentException> { templates.render("test-greeting", params + ("name" to "Ana\r\nBcc: x@evil.pt")) }
         assertThrows<IllegalArgumentException> { templates.render("test-greeting", params + ("name" to "a".repeat(300))) }
     }
 

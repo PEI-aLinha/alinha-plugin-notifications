@@ -57,13 +57,17 @@ class EmailSender(
     }
 
     // The address is personal data and SMTP errors quote it, in any case or in part (local part, domain).
-    private fun redact(message: String, recipient: String): String =
-        listOf(recipient, recipient.substringBefore('@'), recipient.substringAfter('@'))
-            .filter { it.length >= 3 }
-            .fold(message) { text, part -> text.replace(part, "<recipient>", ignoreCase = true) }
-            .take(MAX_ERROR)
-
     companion object {
         const val MAX_ERROR = 500
+
+        // Whole tokens only, so a local part like "ana" does not corrupt "banana".
+        internal fun redact(message: String, recipient: String): String =
+            listOf(recipient, recipient.substringBefore('@'), recipient.substringAfter('@'))
+                .filter { it.length >= 3 }
+                .fold(message) { text, part ->
+                    Regex("""(?<![\w.+-])${Regex.escape(part)}(?![\w.+-])""", RegexOption.IGNORE_CASE)
+                        .replace(text, "<recipient>")
+                }
+                .take(MAX_ERROR)
     }
 }

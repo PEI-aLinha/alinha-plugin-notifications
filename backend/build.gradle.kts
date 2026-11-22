@@ -20,6 +20,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-mail")
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation("org.awaitility:awaitility") // version from the Spring Boot BOM
     testImplementation(libs.testcontainers.junit.jupiter)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.spring.boot.starter.flyway) // real core + notifications migrations
